@@ -1,6 +1,10 @@
 # RAILGUN Advanced Setup Ceremony
 
-> zk-SNARKs require a pre-existing setup between the prover and verifier. A set of public parameters define the “rules of the game” for the construction of zk-SNARKs. This app allows everyone to contribute with your source of entropy so that tornado.cash can be trustless.
+> zk-SNARKs require a pre-existing setup between the prover and verifier. A set of public parameters define the “rules of the game” for the construction of zk-SNARKs. This app allows everyone to contribute their own entropy. Contributors can verify that their entropy contributions were included, and tweet the hash of their contribution transcript to allow others to verify this as well. This README will be updated with instructions to verify the finalized artifacts when the ceremony is complete.
+
+This ceremony is built upon iden3 [snarkjs](https://github.com/iden3/snarkjs) (Groth16 Protocol), which is patched to make the `phase2verifyFromInit` return multi-party compute params including contribution hashes rather than true/false.
+
+While contributions to a single circuit must be done in series, this ceremony allows multiple contributors to partcipate at the same time by sending them challenges for any circuits that are not currently being worked on. Each contributor will ideally contribute to one round for all 54 circuits, though this is not required.
 
 ––
 

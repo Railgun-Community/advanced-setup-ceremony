@@ -147,8 +147,8 @@ module.exports = {
     },
     html: {
       minify: {
-        collapseWhitespace: true, // as @dario30186 mentioned
-        removeComments: true // 👈 add this line
+        collapseWhitespace: true,
+        removeComments: true
       }
     }
   },

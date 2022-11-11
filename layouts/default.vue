@@ -7,7 +7,14 @@
       </div>
       <footer id="footer">
         <p id="copyright" class="copyright">
-          &copy; 2022. All rights reserved.
+          <a
+            href="https://github.com/railgun-community/advanced-setup-ceremony"
+            class="social-link"
+            target="_blank"
+          >
+            <span class="icon icon-github is-medium"></span>
+            github.com/railgun-community/advanced-setup-ceremony
+          </a>
         </p>
       </footer>
     </section>

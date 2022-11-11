@@ -45,7 +45,7 @@ router.get('/challenge', isAuthenticated, async (req, res) => {
     try {
       contribution = await nextContribution(contributor)
     } catch (e) {
-      console.log('error getting next contribution', e.toString())
+      log('error getting next contribution', e.toString())
       res.status(400).send(e.toString())
       return
     }
@@ -53,10 +53,9 @@ router.get('/challenge', isAuthenticated, async (req, res) => {
       return res.status(204).send('done')
     }
     const circuit = await contribution.getCircuit()
-    console.log('challenge', circuit.dataValues)
+    log('challenge', circuit.dataValues)
 
     const challengeZKey = circuitZKeyPath(circuit.name, contribution.round - 1)
-    console.log('challenge (last) zkey', challengeZKey)
     res.sendFile(challengeZKey)
   }
 })
@@ -105,10 +104,7 @@ router.get('/circuits/:name', async (req, res) => {
   return res.json(circuit)
 })
 router.get('/circuits', async (req, res) => {
-  const circuits = await Circuit.findAll({
-    include: [Contribution]
-    // where: { [Op.and]: Sequelize.fn('max', Sequelize.col('round')) }
-  })
+  const circuits = await Circuit.findAll({ include: [Contribution] })
   return res.json(circuits)
 })
 
@@ -145,7 +141,6 @@ router.get('/contributions', async (req, res) => {
   res.json(contributions)
 })
 
-
 router.post('/response', isAuthenticated, upload.single('response'), async (req, res) => {
   if (!req.file) {
     res.status(400).send('Missing response file')
@@ -180,7 +175,7 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
   }
 
   try {
-    console.log(
+    log(
       `Contribution ${contributionIndex} for ${contributor.handle} is correct, uploading to storage`
     )
     // ensure round subdirectory exists
@@ -193,7 +188,7 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
     contribution.hash = verificationResult.hash
     contribution.name = verificationResult.name
 
-    // prepare transcript of all of the user's contributions and hash
+    // prepare transcript of all of the user's contributions and save sha256 hash for attestation
     if (contributionIndex === Number(process.env.CIRCUITS_COUNT)) {
       const transcript = await db.contributorTranscript(contributor.id)
       const transcriptHash = sha256(JSON.stringify(transcript))
@@ -223,9 +218,7 @@ router.post('/authorize_contribution', async (req, res) => {
     res.status(404).send('Invalid request params')
   }
 
-  const contribution = await Contribution.findOne({
-    where: { token: req.body.token }
-  })
+  const contribution = await Contribution.findOne({ where: { token: req.body.token } })
   if (!contribution) {
     res.status(404).send('There is no such contribution')
     return

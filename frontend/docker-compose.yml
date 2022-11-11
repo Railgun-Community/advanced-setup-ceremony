@@ -14,13 +14,12 @@ services:
       - html:/usr/share/nginx/html
       - certs:/etc/nginx/certs
 
+  # will generate cert according to VIRTUAL_HOST in env on `app` service
   dockergen:
     image: poma/docker-gen
     container_name: dockergen
     restart: always
     command: -notify-sighup nginx -watch /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
-    #env_file:
-    #  - ../.env.production.host
     environment:
       NGINX_CLIENT_MAX_BODY_SIZE: 30M
     volumes_from:

@@ -175,10 +175,8 @@ router.get('/user_data/', (req, res) => {
           contributor = await createContributorFromSocial({ ...userData, sessionID })
           userData.id = contributor.id
           req.session.user = userData
-          console.log(userData)
           return res.json(contributor.dataValues)
         } catch {
-          console.log('bad username?', userData)
           return res.status(422).json()
         }
       }
@@ -200,10 +198,8 @@ router.get('/user_data/', (req, res) => {
             contributor = await createContributorFromSocial({ ...userData, sessionID })
             userData.id = contributor.id
             req.session.user = userData
-            console.log(userData)
             return res.json(contributor.dataValues)
           } catch {
-            console.log('bad username?', userData)
             return res.status(422).json()
           }
         }

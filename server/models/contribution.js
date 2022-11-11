@@ -32,15 +32,13 @@ module.exports = (sequelize) => {
      */
     static async purgeStaleContributions() {
       const bestBefore = new Date(new Date().getTime() - STALE * 60000)
-      log('purging stale contributions')
-      log({ now: new Date(), stale: bestBefore })
       const destroyed = await Contribution.destroy({
         where: {
           verifiedAt: null,
           createdAt: { [Op.lte]: bestBefore }
         }
       })
-      log('destroyed stale', destroyed)
+      log(`purged ${destroyed} stale contributions`)
     }
 
     static async contributorInvalidCircuits(ContributorId) {
@@ -89,19 +87,5 @@ module.exports = (sequelize) => {
       }
     }
   )
-  // Contribution.associate = function(models) {
-  // Contribution.belongsTo(models.Circuit)
-  /*, {
-      foreignKey: 'circuitId',
-      as: 'circuit'
-    })
-    */
-  // Contribution.belongsTo(models.Contributor)
-  /*, {
-      foreignKey: 'contributorId',
-      as: 'contributor'
-    })
-    */
-  // }
   return Contribution
 }

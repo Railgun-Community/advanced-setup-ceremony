@@ -8,11 +8,11 @@ const session = require('express-session')
 const SequelizeStore = require('connect-session-sequelize')(session.Store)
 const morgan = require('morgan')
 const { loadNuxt, build } = require('nuxt')
-const config = require('../nuxt.config.js')
 const sessionsController = require('./controllers/authorize')
 const contributionController = require('./controllers/contribute')
 const models = require('./models')
 // const attestationWatcher = require('./attestationWatcher')
+const { log } = console
 
 const isDev = process.env.NODE_ENV !== 'production'
 const PORT = process.env.PORT || 3000
@@ -64,7 +64,7 @@ async function start() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}.`)
+    log(`Server is running on port ${PORT}.`)
   })
 
   // attestationWatcher()

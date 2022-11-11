@@ -74,17 +74,6 @@ export default {
       contributors: [],
       contributions: [],
       circuits: [],
-      // contributions: [
-      //   {
-      //     id: 1,
-      //     socialType: 'twitter',
-      //     account: '@VitalikButerin',
-      //     name: 'Vitalik Buterin',
-      //     company: 'Ethereum',
-      //     attestation: 'https://twitter.com/VitalikButerin/status/1220158987456237568',
-      //     contribution: '#'
-      //   }
-      // ],
       rowsPerPage: 100,
       contributionSearch: '',
       downloadUrl: process.env.downloadUrl

@@ -215,7 +215,6 @@ export default {
         return this.logOut()
       }
       const contributions = await contributionData.json()
-      console.log({ contributions })
       return contributions
     },
 
@@ -238,9 +237,8 @@ export default {
           let data
           try {
             data = await fetch('api/challenge')
+            // server says no content, all done
             if (data.status === 204) {
-              // server says no content, all done
-              console.log('204 on challenge')
               done = true
               continue
             }
@@ -271,7 +269,6 @@ export default {
           this.contributionHash = hash
 
           console.log('hash', hash)
-          console.log('contribution', contribution)
 
           this.$root.$emit(
             'enableLoading',
