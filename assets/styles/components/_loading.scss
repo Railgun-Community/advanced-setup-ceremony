@@ -1,0 +1,41 @@
+.loading-overlay {
+  &.is-full-page {
+    .loading-background {
+      background: rgba(0, 0, 0, 0.85);
+    }
+  }
+  .loading-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    .loading-icon {
+      content: '';
+      display: block;
+      height: 60px;
+      width: 240px;
+      background-image: url('../img/railgun.svg');
+      background-size: 240px 60px;
+      background-repeat: no-repeat;
+
+      &:after {
+        top: -92px;
+        height: 60px;
+        width: 60px;
+      }
+    }
+
+    .loading-message {
+      padding-top: 0.5rem;
+      color: white;
+      text-align: center;
+      max-width: 480px;
+
+      &.is-danger {
+        color: $danger;
+      }
+    }
+  }
+}
