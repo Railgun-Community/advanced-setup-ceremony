@@ -11,6 +11,10 @@
         </svg>
       </button>
     </h1>
+    <div class="currently">
+      Approximately <span>{{ unverifiedContributions }}</span> Contributors are currently
+      contributing
+    </div>
     <!-- show if not logged in -->
     <div v-show="!isLoggedIn">
       <h2 class="subtitle" style="margin-bottom: 36px">
@@ -69,7 +73,8 @@
       <p class="p">
         This contribution will generate entropy for more than 50 new RAILGUN circuits. This is a
         fairly intense cryptographic operation, and may take 60 minutes depending on your processing
-        power. We recommend running the contribution overnight.
+        power. We recommend running the contribution overnight, although you may stop and resume
+        where you left off at any time.
       </p>
       <div class="buttons is-centered">
         <div class="buttons">
@@ -140,7 +145,8 @@ export default {
         msg: ''
       },
       contributionHash: null,
-      authorizeLink: null
+      authorizeLink: null,
+      unverifiedContributions: 0
     }
   },
   computed: {
@@ -188,6 +194,7 @@ export default {
   },
   async mounted() {
     this.$root.$emit('enableLoading')
+    await this.currentContributions()
     await this.getUserData()
     setTimeout(() => {
       this.$root.$emit('disableLoading')
@@ -208,6 +215,12 @@ export default {
           this.makeContribution({ userInput })
         }
       })
+    },
+    async currentContributions() {
+      const response = await fetch('api/contributions/unverified')
+      if (response.ok) {
+        this.unverifiedContributions = (await response.json()).length
+      }
     },
     async fetchMyContributions() {
       const contributionData = await fetch(`api/contributions/me`)

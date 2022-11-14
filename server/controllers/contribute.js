@@ -108,6 +108,14 @@ router.get('/circuits', async (req, res) => {
   return res.json(circuits)
 })
 
+router.get('/contributions/unverified', async (req, res) => {
+  const contributions = await Contribution.findAll({
+    where: { verifiedAt: null },
+    attributes: ['id', 'CircuitId', 'round', 'createdAt']
+  })
+  return res.json(contributions)
+})
+
 router.get('/contributions/me', isAuthenticated, async (req, res) => {
   const contributions = await Contribution.findAll({
     where: { ContributorId: req.session.user.id },
