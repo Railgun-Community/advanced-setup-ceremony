@@ -31,15 +31,11 @@ app.use(
   })
 )
 
-app.use((req, res, next) => {
-  res.locals.session = req.session
-  next()
-})
-
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
 
 app.use(
+  '/api', // only use session on api routes
   session({
     secret: process.env.SESSION_SECRET,
     resave: false,
