@@ -250,11 +250,23 @@ export default {
           let data
           try {
             data = await fetch('api/challenge')
-            // server says no content, all done
-            if (data.status === 204) {
-              done = true
-              continue
+            if (data.status !== 200) {
+              if (data.status === 204) {
+                // server says no content, all done
+                done = true
+                continue
+              } else if (data.status === 423) {
+                // all remaining circuits are busy. wait and retry
+                this.root.$emit('enableLoading', 'Remaining circuits are busy; retrying')
+                await timeout(10000)
+                continue
+              } else {
+                this.root.$emit('enableLoading', 'Unknown error, waiting to retry')
+                await timeout(10000)
+                continue
+              }
             }
+            // everything ok, proceed to contribute
             data = new Uint8Array(await data.arrayBuffer())
             contributions = await this.fetchMyContributions()
           } catch (err) {

@@ -45,12 +45,15 @@ router.get('/challenge', isAuthenticated, async (req, res) => {
     try {
       contribution = await nextContribution(contributor)
     } catch (e) {
-      log('error getting next contribution', e.toString())
-      res.status(400).send(e.toString())
-      return
-    }
-    if (contribution === undefined) {
-      return res.status(204).send('done')
+      if (e.cause === 'busy') {
+        log(e.message)
+        return res.status(423).send(e.message)
+      } else if (e.cause === 'done') {
+        return res.status(204).send('done')
+      } else {
+        log('error getting next contribution', e.toString())
+        return res.status(400).send(e.toString())
+      }
     }
     const circuit = await contribution.getCircuit()
     log('challenge', circuit.dataValues)
@@ -149,23 +152,36 @@ router.get('/contributions', async (req, res) => {
   res.json(contributions)
 })
 
+/**
+ * be paranoid about attempting to overwrite existing contribution
+ * delete the contribution trying to overwrite and indicate Unprocessable
+ */
+async function onExistingZKey(res, contribution) {
+  const { CircuitId, ContributorId, round } = contribution
+  const pending = { CircuitId, ContributorId, round }
+  console.error('Existing ZKey conflict, removing pending contribution', pending)
+  await contribution.destroy()
+  return res.status(422).send('Contribution already uploaded')
+}
+
 router.post('/response', isAuthenticated, upload.single('response'), async (req, res) => {
   if (!req.file) {
-    res.status(400).send('Missing response file')
-    return
+    return res.status(400).send('Missing response file')
   }
 
   const contributor = await currentContributor(req.session.user.id)
-  const contribution = await nextContribution(contributor)
-  const circuit = await contribution.getCircuit()
+  const contribution = await db.activeContribution(contributor.id)
+  if (!contribution) {
+    return res.status(400).send('Invalid contribution')
+  }
+  const circuit = contribution.Circuit
+  if (!circuit) {
+    return res.status(400).send('Invalid circuit')
+  }
 
   const zkeypath = circuitZKeyPath(circuit.name, contribution.round)
   if (existsSync(zkeypath)) {
-    return res.status(422).send('Contribution already uploaded')
-  }
-
-  if (!circuit) {
-    res.status(400).send('Invalid circuit')
+    return onExistingZKey(res, contribution)
   }
 
   const contributionIndex = contributor.Contributions.length
@@ -183,6 +199,9 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
   }
 
   try {
+    if (existsSync(zkeypath)) {
+      return onExistingZKey(res, contribution)
+    }
     log(
       `Contribution ${contributionIndex} for ${contributor.handle} is correct, uploading to storage`
     )

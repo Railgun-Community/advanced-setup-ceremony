@@ -29,7 +29,8 @@ db.Circuit.hasMany(db.Contribution)
 
 db.activeContribution = async function(ContributorId) {
   const activeContribution = await db.Contribution.findOne({
-    where: { ContributorId, verifiedAt: null }
+    where: { ContributorId, verifiedAt: null },
+    include: [db.Circuit]
   })
   return activeContribution
 }
@@ -45,6 +46,12 @@ db.nextContribution = async function(contributor) {
     return activeContribution
   }
   // don't include active contributions or those already completed by contributor
+  const completedCircuits = await db.Contribution.findAll({
+    where: { ContributorId: contributor.id },
+    attributes: ['CircuitId']
+  })
+  const remainingCircuits = process.env.CIRCUITS_COUNT - completedCircuits.length
+
   const invalidCircuits = await db.Contribution.contributorInvalidCircuits(contributor.id)
 
   const nextCircuit = await db.Circuit.findOne({
@@ -52,10 +59,13 @@ db.nextContribution = async function(contributor) {
   })
   // if no circuit was found, the contributor has contributed to all
   if (!nextCircuit) {
-    return undefined
+    if (remainingCircuits) {
+      throw new Error('All remaining Circuits are locked', { cause: 'busy' })
+    } else {
+      throw new Error('No more Circuits require contribution', { cause: 'done' })
+    }
   }
 
-  // const lastRound = (await db.Contribution.max('round', { where: { CircuitId: nextCircuit.id } })) ?? 0
   const lastRound = await db.Contribution.lastRound(nextCircuit.id)
   const nextContribution = await db.Contribution.create({
     ContributorId: contributor.id,

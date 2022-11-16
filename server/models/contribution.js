@@ -31,7 +31,7 @@ module.exports = (sequelize) => {
      * delete contributions that haven't been finalized for STALE seconds
      */
     static async purgeStaleContributions() {
-      const bestBefore = new Date(new Date().getTime() - STALE * 60000)
+      const bestBefore = new Date(new Date().getTime() - STALE * 1000)
       const destroyed = await Contribution.destroy({
         where: {
           verifiedAt: null,
