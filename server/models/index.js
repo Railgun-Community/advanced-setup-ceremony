@@ -36,8 +36,9 @@ db.Circuit.addScope('lastContribution', {
 // contributors with verified contributions
 db.Contributor.addScope('participating', {
   attributes: {
-    exclude: ['sessionID', 'company', 'token']
+    exclude: ['sessionID', 'company', 'token', 'Contributions']
   },
+  order: [['id', 'DESC']],
   include: { model: db.Contribution.scope('verified') }
 })
 
