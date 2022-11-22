@@ -27,7 +27,7 @@ const app = express()
 app.use(
   morgan('dev', {
     skip: (req, res) => {
-      return !req.originalUrl.startsWith('/api')
+      return !req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/api/stats')
     }
   })
 )
