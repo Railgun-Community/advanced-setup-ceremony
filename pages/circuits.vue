@@ -4,10 +4,7 @@
       Circuits
     </h1>
 
-    <div class="currently">
-      Currently there are <span>{{ contributions.length }}</span> contributions from
-      <span>{{ contributors.length }}</span> contributors
-    </div>
+    <Stats></Stats>
 
     <b-table :data="circuits" :hoverable="true" :mobile-cards="false">
       <template slot-scope="props">
@@ -68,11 +65,12 @@
 </template>
 
 <script>
+import Stats from '@/components/Stats'
+
 export default {
+  components: { Stats },
   data() {
     return {
-      contributors: [],
-      contributions: [],
       circuits: [],
       rowsPerPage: 100,
       contributionSearch: '',
@@ -81,26 +79,12 @@ export default {
   },
   computed: {},
   async mounted() {
-    try {
-      const response = await fetch('/api/circuits')
-      const data = await response.json()
-
-      this.contributions = data.flatMap((circuit) => circuit.Contributions)
-
-      const contributorsResponse = await fetch('/api/contributors')
-      this.contributors = await contributorsResponse.json()
-
-      this.circuits = data.map((circuit) => {
-        return {
-          id: circuit.id,
-          name: circuit.name,
-          contribution: circuit.Contributions[circuit.Contributions.length - 1 ?? 0]
-        }
-      })
-    } catch (e) {
-      /* eslint-disable-next-line no-console */
-      console.error('e', e)
-    }
+    const data = (await fetch('/api/circuits').then((r) => r.json())) ?? []
+    this.circuits = data.map((circuit) => {
+      const count = circuit.Contributions.length
+      const contribution = count ? circuit.Contributions[count - 1] : null
+      return { ...circuit, contribution }
+    })
   }
 }
 </script>

@@ -11,10 +11,8 @@
         </svg>
       </button>
     </h1>
-    <div class="currently">
-      Approximately <span>{{ unverifiedContributions }}</span> Contributors are currently
-      contributing
-    </div>
+    <Stats></Stats>
+
     <!-- show if not logged in -->
     <div v-show="!isLoggedIn">
       <h2 class="subtitle" style="margin-bottom: 36px">
@@ -97,7 +95,9 @@
 import { mapGetters, mapActions } from 'vuex'
 import Cloak from '@/components/Cloak'
 import Form from '@/components/Form'
+import Stats from '@/components/Stats'
 const timeout = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 function buf2hex(buffer) {
   // buffer is an ArrayBuffer
   return Array.prototype.map
@@ -130,21 +130,25 @@ const generateEntropy = async (userInput) => {
   return entropy.toString('hex')
 }
 
-const CIRCUITS_COUNT = 54
-
 export default {
   components: {
     Cloak,
-    Form
+    Form,
+    Stats
   },
   data() {
     return {
+      stats: {
+        active: 0,
+        circuits: 0,
+        contributors: 0,
+        contributions: 0
+      },
       allowAnonymous: false,
       status: {
         type: '',
         msg: ''
       },
-      contributionHash: null,
       authorizeLink: null,
       unverifiedContributions: 0
     }
@@ -194,7 +198,7 @@ export default {
   },
   async mounted() {
     this.$root.$emit('enableLoading')
-    await this.currentContributions()
+    await this.getStats()
     await this.getUserData()
     setTimeout(() => {
       this.$root.$emit('disableLoading')
@@ -216,11 +220,8 @@ export default {
         }
       })
     },
-    async currentContributions() {
-      const response = await fetch('api/contributions/unverified')
-      if (response.ok) {
-        this.unverifiedContributions = (await response.json()).length
-      }
+    async getStats() {
+      this.stats = await fetch('api/stats').then((r) => r.json())
     },
     async fetchMyContributions() {
       const contributionData = await fetch(`api/contributions/me`)
@@ -230,74 +231,75 @@ export default {
       const contributions = await contributionData.json()
       return contributions
     },
-
+    // eslint-disable-next-line object-shorthand
+    getChallenge: function(retry = 0) {
+      return fetch('api/challenge')
+        .then((res) => {
+          if (res.ok) {
+            return res.arrayBuffer()
+          }
+          if (retry < 5) {
+            if (res.status === 204) {
+              // server says no content, all done
+              throw new Error('Complete', { cause: 'done' })
+            } else if (res.status === 423) {
+              // all remaining circuits are busy. wait and retry
+              this.notify('Remaining circuits are busy; retrying')
+              return timeout(10000).then(this.getChallenge(0))
+            } else {
+              this.notify('Unknown error, waiting to retry')
+              return timeout(10000).then(this.getChallenge(retry + 1))
+            }
+          }
+          throw new Error(res.status)
+        })
+        .then((buf) => new Uint8Array(buf))
+        .catch((e) => {
+          console.log(e.message)
+          throw e
+        })
+    },
+    notify(msg) {
+      this.$root.$emit('enableLoading', msg)
+    },
     async makeContribution({ userInput, retry = 0 }) {
       const contributor = await this.$contributor()
       this.status.msg = ''
       this.status.type = ''
       const entropyHex = generateEntropy(userInput)
       const { zKey } = window.snarkjs
+      let contributions = await this.fetchMyContributions()
 
       let done = false
       while (!done) {
-        let contributions
         try {
           console.log(retry)
           if (retry > 3) {
             throw new Error('Unable to upload contribution')
           }
-          this.$root.$emit('enableLoading', 'Downloading last contribution')
-          let data
+          this.notify('Downloading last contribution')
+          let challenge
           try {
-            data = await fetch('api/challenge')
-            if (data.status !== 200) {
-              if (data.status === 204) {
-                // server says no content, all done
-                done = true
-                continue
-              } else if (data.status === 423) {
-                // all remaining circuits are busy. wait and retry
-                this.root.$emit('enableLoading', 'Remaining circuits are busy; retrying')
-                await timeout(10000)
-                continue
-              } else {
-                this.root.$emit('enableLoading', 'Unknown error, waiting to retry')
-                await timeout(10000)
-                continue
-              }
-            }
-            // everything ok, proceed to contribute
-            data = new Uint8Array(await data.arrayBuffer())
+            challenge = await this.getChallenge()
             contributions = await this.fetchMyContributions()
           } catch (err) {
             console.log(err)
             throw err
           }
 
-          this.$root.$emit(
-            'enableLoading',
-            `Generating contribution for ${contributions.length}/${CIRCUITS_COUNT} RAILGUN circuits. Your browser may appear unresponsive. It can take up to 60 minutes to complete, so we recommend leaving this window open overnight.`
+          this.notify(
+            `Generating contribution for ${contributions.length}/${this.stats.circuits} RAILGUN circuits. Your browser may appear unresponsive. It can take up to 60 minutes to complete, so we recommend leaving this window open overnight.`
           )
-          await timeout(100) // allow UI to update before freezing in wasm
-          console.log('Source params', data)
 
           await this.sleep(100) // so browser can render the messages
-          const prevContribution = data
-          const result = await contributor.contribute(
-            zKey,
-            prevContribution,
-            this.userUrl,
-            entropyHex
-          )
+          const result = await contributor.contribute(zKey, challenge, this.userUrl, entropyHex)
           const hash = '0x' + buf2hex(result.hash.slice(0, 64))
           const { contribution } = result
-          this.contributionHash = hash
 
           console.log('hash', hash)
 
-          this.$root.$emit(
-            'enableLoading',
-            `Please keep your browser open! Uploading and verifying your contribution (${contributions.length}/${CIRCUITS_COUNT})`
+          this.notify(
+            `Please keep your browser open! Uploading and verifying your contribution (${contributions.length}/${this.stats.circuits})`
           )
           const formData = new FormData()
           formData.append(
@@ -339,12 +341,13 @@ export default {
           }
         } catch (e) {
           console.error(e)
-          this.status.msg = e.message
+          this.status.msg = e.message ?? 'Unknown Error'
           this.status.type = 'is-danger'
         } finally {
           this.$root.$emit('disableLoading')
         }
       }
+      await this.getStats()
       this.status.msg = 'Your contribution to all circuits is complete!'
       this.status.type = 'is-sucess'
     },

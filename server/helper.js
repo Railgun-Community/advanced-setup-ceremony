@@ -11,6 +11,18 @@ const ptauPath = path.join(serverRootPath, './artifacts/pot20.ptau')
 
 const tmpFile = (filename) => `/tmp/railgun/${filename}`
 
+function getUserId(req) {
+  if (!req) throw new Error('missing req parameter')
+  return req.session?.user?.id
+}
+
+function isAuthenticated(req, res, next) {
+  if (!getUserId(req)) {
+    return res.status(401).send('not authenticated')
+  }
+  next()
+}
+
 function circuitR1csPath(circuitName) {
   return path.join(serverRootPath, `./artifacts/r1cs/${circuitName}.r1cs`)
 }
@@ -66,12 +78,19 @@ function sha256(message) {
     .digest('hex')
 }
 
+class BusyError extends Error {}
+class CompleteError extends Error {}
+
 module.exports = {
   serverRootPath,
+  getUserId,
+  isAuthenticated,
   circuitR1csPath,
   circuitZKeyPath,
   verifyResponse,
   tmpFile,
   sha256,
-  blake2Hash
+  blake2Hash,
+  BusyError,
+  CompleteError
 }

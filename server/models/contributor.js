@@ -1,5 +1,5 @@
 'use strict'
-const { DataTypes, Model } = require('sequelize')
+const { DataTypes, Model, Op } = require('sequelize')
 
 function isValidName(value, minLength = 4) {
   // const regExpression = new RegExp(`^[0-9a-zA-Z\-\\x20]{${minLength},35}$`)
@@ -54,6 +54,9 @@ module.exports = (sequelize) => {
           attributes: {
             include: ['sessionID']
           }
+        },
+        completedContributions: {
+          include: [{ model: 'Contributions', where: { hash: { [Op.ne]: null } } }]
         }
       },
       hooks: {

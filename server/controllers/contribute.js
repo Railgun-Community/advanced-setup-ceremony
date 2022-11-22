@@ -4,26 +4,26 @@ const { existsSync } = require('node:fs')
 const path = require('path')
 const express = require('express')
 const multer = require('multer')
-
-const { Contribution, Contributor, nextContribution, Circuit } = require('../models')
 const router = express.Router()
-const { circuitZKeyPath, tmpFile, verifyResponse, sha256 } = require('../helper')
-const db = require('../models')
+
+const {
+  Contribution,
+  Contributor,
+  nextContribution,
+  activeContribution,
+  ensureTranscriptHash
+} = require('../models')
+const {
+  circuitZKeyPath,
+  tmpFile,
+  verifyResponse,
+  isAuthenticated,
+  BusyError,
+  CompleteError
+} = require('../helper')
 const upload = multer({ dest: '/tmp/railgun' })
-
+const CIRCUITS_COUNT = Number(process.env.CIRCUITS_COUNT)
 const { log } = console
-
-function getUserId(req) {
-  if (!req) throw new Error('missing req parameter')
-  return req.session?.user?.id
-}
-
-function isAuthenticated(req, res, next) {
-  if (!getUserId(req)) {
-    return res.status(401).send('not authenticated')
-  }
-  next()
-}
 
 async function currentContributor(id) {
   const contributor = await Contributor.findOne({
@@ -38,118 +38,28 @@ router.get('/challenge', isAuthenticated, async (req, res) => {
   await Contribution.purgeStaleContributions()
 
   const contributor = await currentContributor(req.session.user.id)
-  if (!contributor) {
-    res.status(401).send('not authenticated')
-  } else {
-    let contribution
-    try {
-      contribution = await nextContribution(contributor)
-    } catch (e) {
-      if (e.cause === 'busy') {
-        log(e.message)
-        return res.status(423).send(e.message)
-      } else if (e.cause === 'done') {
-        return res.status(204).send('done')
-      } else {
-        log('error getting next contribution', e.toString())
-        return res.status(400).send(e.toString())
-      }
-    }
+  try {
+    const contribution = await nextContribution(contributor)
     const circuit = await contribution.getCircuit()
     log('challenge', circuit.dataValues)
 
     const challengeZKey = circuitZKeyPath(circuit.name, contribution.round - 1)
     res.sendFile(challengeZKey)
+  } catch (e) {
+    console.warn('Error getting nextContribution:', e)
+    if (e instanceof BusyError) {
+      log(e.message)
+      return res.status(423).send('busy')
+    } else if (e instanceof CompleteError) {
+      const transcriptHash = await ensureTranscriptHash(contributor)
+      return res.status(204).json({
+        transcriptHash
+      })
+    } else {
+      log('error getting next contribution', e.toString())
+      return res.status(400).send(e.toString())
+    }
   }
-})
-
-router.get('/contributors/:id', async (req, res) => {
-  const { id } = req.params
-  const contributor = await Contributor.findOne({
-    where: { id },
-    include: { all: true, nested: true }
-  })
-  return res.json(contributor)
-})
-
-router.get('/contributors', async (req, res) => {
-  const contributors = await Contributor.findAll({
-    include: [Contribution]
-  })
-  res.json(contributors)
-})
-
-router.get('/download/contributors/:id.json', async (req, res) => {
-  const id = req.params.id
-  const transcript = await db.contributorTranscript(id)
-  res.json(transcript)
-})
-
-router.get('/download/circuits/:name.json', async (req, res) => {
-  const name = req.params.name
-  const circuit = await Circuit.findOne({
-    where: { name },
-    include: [Contribution]
-  })
-  res.json(
-    circuit.Contributions.map(({ name, hash }) => {
-      return { name, hash }
-    })
-  )
-})
-
-router.get('/circuits/:name', async (req, res) => {
-  const name = req.params.name
-  const circuit = await Circuit.findOne({
-    where: { name },
-    include: [Contribution]
-  })
-  return res.json(circuit)
-})
-router.get('/circuits', async (req, res) => {
-  const circuits = await Circuit.findAll({ include: [Contribution] })
-  return res.json(circuits)
-})
-
-router.get('/contributions/unverified', async (req, res) => {
-  const contributions = await Contribution.findAll({
-    where: { verifiedAt: null },
-    attributes: ['id', 'CircuitId', 'round', 'createdAt']
-  })
-  return res.json(contributions)
-})
-
-router.get('/contributions/me', isAuthenticated, async (req, res) => {
-  const contributions = await Contribution.findAll({
-    where: { ContributorId: req.session.user.id },
-    include: ['Circuit']
-  })
-  return res.json(contributions)
-})
-
-router.get('/contributions/:id/download', async (req, res) => {
-  const contribution = await Contribution.findOne({
-    where: { id: req.params.id },
-    include: [Circuit]
-  })
-  if (!contribution) {
-    return res.status(404).send()
-  }
-  const filename = circuitZKeyPath(contribution.Circuit.name, contribution.round - 1)
-  res.sendFile(filename)
-})
-
-router.get('/contributions/:id', async (req, res) => {
-  const contribution = await Contribution.findOne({
-    where: { id: req.params.id },
-    include: [Circuit]
-  })
-  return res.json(contribution)
-})
-
-router.get('/contributions', async (req, res) => {
-  const contributions = await Contribution.findAll({ include: ['Contributor'] })
-  res.json(contributions)
 })
 
 /**
@@ -170,7 +80,15 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
   }
 
   const contributor = await currentContributor(req.session.user.id)
-  const contribution = await db.activeContribution(contributor.id)
+  const completed = contributor.Contributions.filter((c) => c.hash)
+  const contributionIndex = completed.length + 1
+
+  if (contributor.attestation) {
+    return res.status(204).json({
+      transcriptHash: contributor.attestation
+    })
+  }
+  const contribution = await activeContribution(contributor.id)
   if (!contribution) {
     return res.status(400).send('Invalid contribution')
   }
@@ -184,12 +102,10 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
     return onExistingZKey(res, contribution)
   }
 
-  const contributionIndex = contributor.Contributions.length
-
   /** @type {VerificationResult} */
   let verificationResult
   try {
-    console.log(`Started processing contribution ${contributionIndex}`)
+    console.log(`Started processing contribution ${contributionIndex}`, contribution.dataValues)
     const filename = tmpFile(req.file.filename)
     verificationResult = await verifyResponse({ filename, circuit })
   } catch (e) {
@@ -200,6 +116,7 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
 
   try {
     if (existsSync(zkeypath)) {
+      console.warn(`verified, but zkey exists for ${circuit.name}.${contribution.round}`)
       return onExistingZKey(res, contribution)
     }
     log(
@@ -215,17 +132,14 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
     contribution.hash = verificationResult.hash
     contribution.name = verificationResult.name
 
-    // prepare transcript of all of the user's contributions and save sha256 hash for attestation
-    if (contributionIndex === Number(process.env.CIRCUITS_COUNT)) {
-      const transcript = await db.contributorTranscript(contributor.id)
-      const transcriptHash = sha256(JSON.stringify(transcript))
-      contributor.attestation = transcriptHash
-      await contributor.save()
-    }
-
     await contribution.save()
 
-    log('Contribution finished.')
+    // prepare transcript of all of the user's contributions and save sha256 hash for attestation
+    if (contributionIndex === CIRCUITS_COUNT) {
+      contributor.attestation = await ensureTranscriptHash(contributor)
+    }
+
+    log(`Contribution ${contribution.id} finished.`)
     res.json({
       contribution: contribution.dataValues,
       circuit: circuit.dataValues,
@@ -238,65 +152,6 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
   } finally {
     await fs.unlink(tmpFile(req.file.filename))
   }
-})
-
-router.post('/authorize_contribution', async (req, res) => {
-  if (!req.body || !req.body.name || !req.body.token) {
-    res.status(404).send('Invalid request params')
-  }
-
-  const contribution = await Contribution.findOne({ where: { token: req.body.token } })
-  if (!contribution) {
-    res.status(404).send('There is no such contribution')
-    return
-  }
-
-  if (contribution.dataValues.socialType !== 'anonymous') {
-    res.status(404).send('Your contribution is already identified.')
-    return
-  }
-
-  if (!req.session.socialType || req.session.socialType === 'anonymous') {
-    res.status(403).send('Access forbidden')
-    return
-  }
-
-  try {
-    await Contribution.update(
-      {
-        name: req.body.name,
-        company: req.body.company,
-        handle: req.session.user.handle,
-        socialType: req.session.user.socialType
-      },
-      { where: { id: contribution.dataValues.id }, individualHooks: true }
-    )
-    res.send('OK')
-  } catch (e) {
-    console.error('updateError', e)
-    res.status(404).send('Update error')
-  }
-})
-
-router.post('/get_contribution_index', async (req, res) => {
-  if (!req.body || !req.body.token) {
-    res.status(404).send('Wrong request params')
-  }
-
-  const contribution = await Contribution.findOne({
-    where: { token: req.body.token }
-  })
-  if (!contribution) {
-    res.status(404).send('There is no such contribution')
-    return
-  }
-
-  if (contribution.dataValues.socialType !== 'anonymous') {
-    res.status(404).send('The contribution is already authorized')
-    return
-  }
-
-  return res.json({ id: contribution.dataValues.id }).send()
 })
 
 module.exports = router

@@ -1,7 +1,8 @@
 module.exports = {
   development: {
     dialect: 'sqlite',
-    storage: './db.development.sqlite'
+    storage: './db.development.sqlite',
+    logging: false
   },
   production: {
     username: process.env.MYSQL_USER,

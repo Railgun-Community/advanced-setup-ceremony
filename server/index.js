@@ -10,6 +10,7 @@ const morgan = require('morgan')
 const { loadNuxt, build } = require('nuxt')
 const sessionsController = require('./controllers/authorize')
 const contributionController = require('./controllers/contribute')
+const dataController = require('./controllers/data')
 const models = require('./models')
 // const attestationWatcher = require('./attestationWatcher')
 const { log } = console
@@ -46,6 +47,7 @@ app.use(
 )
 app.use('/api', sessionsController)
 app.use('/api', contributionController)
+app.use('/api', dataController)
 
 async function start() {
   await models.sequelize.sync()

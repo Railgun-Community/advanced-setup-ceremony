@@ -4,10 +4,7 @@
       Contributors
     </h1>
 
-    <div class="currently">
-      Currently there are <span>{{ contributions.length }}</span> contributions from
-      <span>{{ filteredContributors.length }}</span> contributors
-    </div>
+    <Stats></Stats>
 
     <b-table
       :data="filteredContributors"
@@ -43,7 +40,7 @@
         </b-table-column>
 
         <b-table-column :centered="false" label="Circuits">
-          {{ props.row.Contributions.length }} / 54
+          {{ props.row.Contributions.length }} / {{ stats.circuits }}
         </b-table-column>
 
         <b-table-column label="View">
@@ -106,22 +103,19 @@
 </template>
 
 <script>
+import Stats from '@/components/Stats'
+
 export default {
+  components: {
+    Stats
+  },
   data() {
     return {
+      stats: {
+        circuits: 0
+      },
       contributors: [],
       contributions: [],
-      // contributions: [
-      //   {
-      //     id: 1,
-      //     socialType: 'twitter',
-      //     account: '@VitalikButerin',
-      //     name: 'Vitalik Buterin',
-      //     company: 'Ethereum',
-      //     attestation: 'https://twitter.com/VitalikButerin/status/1220158987456237568',
-      //     contribution: '#'
-      //   }
-      // ],
       rowsPerPage: 100,
       contributionSearch: '',
       downloadUrl: process.env.downloadUrl
@@ -134,25 +128,22 @@ export default {
       const matchesSearch = (contributor) =>
         contributor.name.toLowerCase().includes(search) ||
         contributor.handle.toLowerCase().includes(search)
-      return this.contributors.filter(hasContributions).filter(matchesSearch)
+      const contributors = this.contributors.filter(hasContributions).filter(matchesSearch)
+      return contributors
     }
   },
-  async mounted() {
-    try {
-      const response = await fetch('/api/contributions')
-      const data = await response.json()
-      this.contributions = data
-    } catch (e) {
-      /* eslint-disable-next-line no-console */
-      console.error('e', e)
-    }
-    try {
-      const response = await fetch('/api/contributors')
-      const data = await response.json()
-      this.contributors = data
-    } catch (e) {
-      /* eslint-disable-next-line no-console */
-      console.error('e', e)
+  mounted() {
+    this.getData()
+  },
+  methods: {
+    async getData() {
+      try {
+        this.stats = await fetch('/api/stats').then((r) => r.json())
+        this.contributors = await fetch('/api/contributors').then((r) => r.json())
+      } catch (e) {
+        /* eslint-disable-next-line no-console */
+        console.error('e', e)
+      }
     }
   }
 }

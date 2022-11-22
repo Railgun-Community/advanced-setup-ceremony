@@ -62,6 +62,8 @@ module.exports = (sequelize) => {
     }
   }
 
+  const exclude = ['token', 'attestation', 'createdAt', 'updatedAt']
+
   Contribution.init(
     {
       // CircuitId
@@ -80,6 +82,16 @@ module.exports = (sequelize) => {
       }
     },
     {
+      scopes: {
+        latest: {
+          where: { verifiedAt: { [Op.ne]: null } },
+          attributes: { exclude },
+          order: [['round', 'DESC']],
+          limit: 1
+        },
+        verified: { where: { verifiedAt: { [Op.ne]: null } }, attributes: { exclude } },
+        unverified: { where: { verifiedAt: null }, attributes: { exclude } }
+      },
       sequelize,
       hooks: {
         beforeCreate: validate,

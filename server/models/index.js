@@ -1,10 +1,11 @@
-// const fs = require('fs')
 const path = require('path')
 const { Sequelize, Op } = require('sequelize')
-// const basename = path.basename(__filename)
+const { BusyError, CompleteError } = require('../helper')
+
 const env = process.env.NODE_ENV || 'development'
 const config = require(path.join(__dirname, '/../dbConfig.js'))[env]
 const db = {}
+const { sha256 } = require('../helper')
 
 /** @type {Sequelize.Sequelize} */
 let sequelize
@@ -27,6 +28,19 @@ db.Contribution.belongsTo(db.Circuit)
 
 db.Circuit.hasMany(db.Contribution)
 
+// limits Contributions to most recent verified
+db.Circuit.addScope('lastContribution', {
+  include: { model: db.Contribution.scope('latest') }
+})
+
+// contributors with verified contributions
+db.Contributor.addScope('participating', {
+  attributes: {
+    exclude: ['sessionID', 'company', 'token']
+  },
+  include: { model: db.Contribution.scope('verified') }
+})
+
 db.activeContribution = async function(ContributorId) {
   const activeContribution = await db.Contribution.findOne({
     where: { ContributorId, verifiedAt: null },
@@ -38,7 +52,7 @@ db.activeContribution = async function(ContributorId) {
 /**
  * @returns {db.Contribution|undefined}
  */
-db.nextContribution = async function(contributor) {
+const nextContribution = async function(contributor) {
   // if contributor has unverified contribution, return it
   const activeContribution = await db.activeContribution(contributor.id)
   if (activeContribution) {
@@ -47,10 +61,16 @@ db.nextContribution = async function(contributor) {
   }
   // don't include active contributions or those already completed by contributor
   const completedCircuits = await db.Contribution.findAll({
-    where: { ContributorId: contributor.id },
+    where: { ContributorId: contributor.id, verifiedAt: null },
     attributes: ['CircuitId']
   })
-  const remainingCircuits = process.env.CIRCUITS_COUNT - completedCircuits.length
+  const CIRCUITS_COUNT = Number(process.env.CIRCUITS_COUNT)
+
+  const remainingCircuits = CIRCUITS_COUNT - completedCircuits.length
+
+  if (remainingCircuits <= 0) {
+    throw new CompleteError()
+  }
 
   const invalidCircuits = await db.Contribution.contributorInvalidCircuits(contributor.id)
 
@@ -59,11 +79,7 @@ db.nextContribution = async function(contributor) {
   })
   // if no circuit was found, the contributor has contributed to all
   if (!nextCircuit) {
-    if (remainingCircuits) {
-      throw new Error('All remaining Circuits are locked', { cause: 'busy' })
-    } else {
-      throw new Error('No more Circuits require contribution', { cause: 'done' })
-    }
+    throw new BusyError('All remaining Circuits are locked')
   }
 
   const lastRound = await db.Contribution.lastRound(nextCircuit.id)
@@ -74,6 +90,18 @@ db.nextContribution = async function(contributor) {
   })
   log('nextContribution', nextContribution.dataValues)
   return nextContribution
+}
+db.nextContribution = nextContribution
+
+db.ensureTranscriptHash = async function(contributor) {
+  if (contributor.attestation) {
+    return contributor.attestation
+  }
+  const transcript = await db.contributorTranscript(contributor.id)
+  const transcriptHash = sha256(JSON.stringify(transcript))
+  contributor.attestation = transcriptHash
+  await contributor.save()
+  return transcriptHash
 }
 
 db.contributorTranscript = async function(id) {
