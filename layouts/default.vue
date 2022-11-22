@@ -13,7 +13,6 @@
             target="_blank"
           >
             <span class="icon icon-github is-medium"></span>
-            github.com/railgun-community/advanced-setup-ceremony
           </a>
         </p>
       </footer>
