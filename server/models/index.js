@@ -62,7 +62,7 @@ const nextContribution = async function(contributor) {
   }
   // don't include active contributions or those already completed by contributor
   const completedCircuits = await db.Contribution.findAll({
-    where: { ContributorId: contributor.id, verifiedAt: null },
+    where: { ContributorId: contributor.id, verifiedAt: { [Op.ne]: null } },
     attributes: ['CircuitId']
   })
   const CIRCUITS_COUNT = Number(process.env.CIRCUITS_COUNT)
@@ -89,7 +89,6 @@ const nextContribution = async function(contributor) {
     CircuitId: nextCircuit.id,
     round: lastRound + 1
   })
-  log('nextContribution', nextContribution.dataValues)
   return nextContribution
 }
 db.nextContribution = nextContribution

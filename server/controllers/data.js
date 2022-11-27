@@ -22,7 +22,7 @@ router.get('/contributors/:id', async (req, res) => {
 
 router.get('/contributors', async (req, res) => {
   const contributors = await db.Contributor.scope('participating').findAll()
-  res.json(contributors)
+  res.json(contributors.map((c) => c.dataValues))
 })
 
 router.get('/download/contributors/:id.json', async (req, res) => {

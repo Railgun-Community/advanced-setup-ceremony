@@ -98,13 +98,6 @@ import Form from '@/components/Form'
 import Stats from '@/components/Stats'
 const timeout = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function buf2hex(buffer) {
-  // buffer is an ArrayBuffer
-  return Array.prototype.map
-    .call(new Uint8Array(buffer), (x) => ('00' + x.toString(16)).slice(-2))
-    .join('')
-}
-
 /**
  *
  * @param {string} userInput
@@ -148,9 +141,7 @@ export default {
       status: {
         type: '',
         msg: ''
-      },
-      authorizeLink: null,
-      unverifiedContributions: 0
+      }
     }
   },
   computed: {
@@ -233,123 +224,122 @@ export default {
     },
     // eslint-disable-next-line object-shorthand
     getChallenge: function(retry = 0) {
+      const retries = 5
       return fetch('api/challenge')
         .then((res) => {
           if (res.ok) {
             return res.arrayBuffer()
           }
-          if (retry < 5) {
+          if (retry < retries) {
             if (res.status === 204) {
               // server says no content, all done
               throw new Error('Complete', { cause: 'done' })
             } else if (res.status === 423) {
               // all remaining circuits are busy. wait and retry
               this.notify('Remaining circuits are busy; retrying')
-              return timeout(10000).then(this.getChallenge(0))
+              return timeout(10000).then(() => this.getChallenge(0))
             } else {
               this.notify('Unknown error, waiting to retry')
-              return timeout(10000).then(this.getChallenge(retry + 1))
+              return timeout(10000).then(() => this.getChallenge(retry + 1))
             }
           }
           throw new Error(res.status)
         })
         .then((buf) => new Uint8Array(buf))
         .catch((e) => {
-          console.log(e.message)
+          if (retry < retries) {
+            return timeout(10000).then(() => this.getChallenge(retry + 1))
+          }
+          console.log('error on challenge')
           throw e
         })
+    },
+    getResponse(contribution, retry = 0) {
+      const formData = new FormData()
+      const type = 'application/octet-stream'
+      formData.append('response', new Blob([contribution], { type }))
+      const options = { method: 'POST', body: formData }
+      return fetch('api/response', options).then((resp) => {
+        if (resp.ok) {
+          return resp.json()
+        }
+        if (retry < 3) {
+          if (resp.status === 422) {
+            // retries won't help, throw
+            const msg = `Looks like someone else uploaded contribution ahead of us`
+            this.notify(msg)
+            throw new Error(msg)
+          }
+          return this.timeout(5000).then(() => this.getResponse(contribution, retry + 1))
+        } else {
+          const e = `Failed to upload your contribution after ${retry} attempts`
+          this.error(e)
+          throw new Error(e)
+        }
+      })
     },
     notify(msg) {
       this.$root.$emit('enableLoading', msg)
     },
+    error(msg, append = false) {
+      console.log(msg)
+      this.status.type = 'is-danger'
+      if (append) {
+        this.status.msg = `${msg} (${this.status.msg})`
+      } else {
+        this.status.msg = msg
+      }
+    },
     async makeContribution({ userInput, retry = 0 }) {
-      const contributor = await this.$contributor()
+      const { zKey } = window.snarkjs
+      const { contribute } = this.$contributor()
+
       this.status.msg = ''
       this.status.type = ''
       const entropyHex = generateEntropy(userInput)
-      const { zKey } = window.snarkjs
       let contributions = await this.fetchMyContributions()
 
       let done = false
-      while (!done) {
+      const retries = 10
+      while (!done && retry < retries) {
         try {
-          console.log(retry)
-          if (retry > 3) {
-            throw new Error('Unable to upload contribution')
-          }
           this.notify('Downloading last contribution')
-          let challenge
-          try {
-            challenge = await this.getChallenge()
-            contributions = await this.fetchMyContributions()
-          } catch (err) {
-            console.log(err)
-            throw err
-          }
+          const challenge = await this.getChallenge()
+          contributions = await this.fetchMyContributions()
 
           this.notify(
             `Generating contribution for ${contributions.length}/${this.stats.circuits} RAILGUN circuits. Your browser may appear unresponsive. It can take up to 60 minutes to complete, so we recommend leaving this window open overnight.`
           )
-
           await this.sleep(100) // so browser can render the messages
-          const result = await contributor.contribute(zKey, challenge, this.userUrl, entropyHex)
-          const hash = '0x' + buf2hex(result.hash.slice(0, 64))
-          const { contribution } = result
-
-          console.log('hash', hash)
+          const { contribution } = await contribute(zKey, challenge, this.userUrl, entropyHex)
 
           this.notify(
             `Please keep your browser open! Uploading and verifying your contribution (${contributions.length}/${this.stats.circuits})`
           )
-          const formData = new FormData()
-          formData.append(
-            'response',
-            new Blob([contribution], { type: 'application/octet-stream' })
-          )
-          if (this.contributionType !== 'anonymous') {
-            formData.append('name', this.userUrl)
-          }
-          const resp = await fetch('api/response', {
-            method: 'POST',
-            body: formData
-          })
-          if (resp.ok) {
-            const responseData = await resp.json()
-            this.$store.commit('user/SET_CONTRIBUTION_INDEX', responseData.contributionIndex)
-            if (responseData.transcriptHash) {
-              this.status.msg =
-                'Your contributions to all circuits have been verified and recorded.'
-              this.status.type = 'is-success'
-              this.$store.commit('user/SET_TRANSCRIPT_HASH', responseData.transcriptHash)
-              done = true
-            } else {
-              this.status.msg = 'Your contribution has been verified and recorded.'
-              this.status.type = 'is-success'
-            }
-          } else if (resp.status === 422) {
-            if (retry < 3) {
-              console.log(`Looks like someone else uploaded contribution ahead of us, retrying`)
-              const newRetry = retry + 1
-              await this.makeContribution({ userInput, retry: newRetry })
-            } else {
-              this.status.msg = `Failed to upload your contribution after ${retry} attempts`
-              this.status.type = 'is-danger'
-            }
-          } else {
-            this.status.msg = 'Error uploading your contribution'
-            this.status.type = 'is-danger'
+          const response = await this.getResponse(contribution)
+          console.log(response)
+          this.$store.commit('user/SET_CONTRIBUTION_INDEX', response.contributionIndex)
+          // reset retries on successful contribution
+          retry = 0
+          if (response.transcriptHash) {
+            this.$store.commit('user/SET_TRANSCRIPT_HASH', response.transcriptHash)
+            done = true
           }
         } catch (e) {
-          console.error(e)
-          this.status.msg = e.message ?? 'Unknown Error'
-          this.status.type = 'is-danger'
+          this.error(e.message ?? 'Unknown error; try again?')
+          await timeout(5000)
+          retry = retry + 1
         } finally {
           this.$root.$emit('disableLoading')
         }
       }
-      await this.getStats()
-      this.status.msg = 'Your contribution to all circuits is complete!'
-      this.status.type = 'is-sucess'
+      if (retry >= retries) {
+        this.error('Failed to finish contributing to ceremony - try again later!', true)
+      }
+      if (done) {
+        this.status.msg = 'Your contribution to all circuits is complete!'
+        this.status.type = 'is-sucess'
+      }
     },
     onAnonymousHandler() {
       this.logOut()

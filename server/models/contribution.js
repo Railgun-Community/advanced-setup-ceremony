@@ -35,10 +35,12 @@ module.exports = (sequelize) => {
       const destroyed = await Contribution.destroy({
         where: {
           verifiedAt: null,
-          createdAt: { [Op.lte]: bestBefore }
+          updatedAt: { [Op.lte]: bestBefore }
         }
       })
-      log(`purged ${destroyed} stale contributions`)
+      if (destroyed) {
+        log(`purged ${destroyed} stale contributions`)
+      }
     }
 
     static async contributorInvalidCircuits(ContributorId) {
@@ -62,7 +64,7 @@ module.exports = (sequelize) => {
     }
   }
 
-  const exclude = ['token', 'attestation', 'createdAt', 'updatedAt']
+  const exclude = ['token', 'attestation']
 
   Contribution.init(
     {
@@ -82,6 +84,9 @@ module.exports = (sequelize) => {
       }
     },
     {
+      defaultScope: {
+        attributes: { exclude: ['token', 'attestation'] }
+      },
       scopes: {
         latest: {
           where: { verifiedAt: { [Op.ne]: null } },

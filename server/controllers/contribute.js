@@ -52,6 +52,7 @@ router.get('/challenge', isAuthenticated, async (req, res) => {
       return res.status(423).send('busy')
     } else if (e instanceof CompleteError) {
       const transcriptHash = await ensureTranscriptHash(contributor)
+      console.log(`Ceremony completed by ${contributor.url}: ${transcriptHash}`)
       return res.status(204).json({
         transcriptHash
       })
@@ -66,11 +67,9 @@ router.get('/challenge', isAuthenticated, async (req, res) => {
  * be paranoid about attempting to overwrite existing contribution
  * delete the contribution trying to overwrite and indicate Unprocessable
  */
-async function onExistingZKey(res, contribution) {
-  const { CircuitId, ContributorId, round } = contribution
-  const pending = { CircuitId, ContributorId, round }
-  console.error('Existing ZKey conflict, removing pending contribution', pending)
-  await contribution.destroy()
+function onExistingZKey(res, contribution) {
+  const filename = circuitZKeyPath(contribution.Circuit.name, contribution.round)
+  console.error(`zkey already exists: ${filename}`, contribution.toJSON())
   return res.status(422).send('Contribution already uploaded')
 }
 
@@ -78,6 +77,7 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
   if (!req.file) {
     return res.status(400).send('Missing response file')
   }
+  const filename = tmpFile(req.file.filename)
 
   const contributor = await currentContributor(req.session.user.id)
   const completed = contributor.Contributions.filter((c) => c.hash)
@@ -89,28 +89,39 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
     })
   }
   const contribution = await activeContribution(contributor.id)
-  if (!contribution) {
+  if (!contribution || contribution.hash) {
     return res.status(400).send('Invalid contribution')
   }
   const circuit = contribution.Circuit
-  if (!circuit) {
-    return res.status(400).send('Invalid circuit')
-  }
 
   const zkeypath = circuitZKeyPath(circuit.name, contribution.round)
+  // if zkey aalready exists for this round, the last contribution was not recorded in the db
+  // as we will not overwrite, return early and report the error
   if (existsSync(zkeypath)) {
     return onExistingZKey(res, contribution)
+  }
+
+  // touch updatedAt to prevent deletion of contribution while it's being verified
+  // stale contribution locks are checked and purged in `challenge`
+  try {
+    contribution.changed('updatedAt', true)
+    await contribution.update({
+      updatedAt: new Date()
+    })
+  } catch (e) {
+    console.error('Error updating contribution lock pre-verification')
+    await fs.unlink(filename)
+    return res.status(400)
   }
 
   /** @type {VerificationResult} */
   let verificationResult
   try {
-    console.log(`Started processing contribution ${contributionIndex}`, contribution.dataValues)
-    const filename = tmpFile(req.file.filename)
+    console.log(`Started processing contribution ${contributionIndex}`, contribution.toJSON())
     verificationResult = await verifyResponse({ filename, circuit })
   } catch (e) {
     console.error('Got error verifying', e)
-    await fs.unlink(tmpFile(req.file.filename))
+    await fs.unlink(filename)
     return res.status(422).send(e.toString())
   }
 
@@ -125,21 +136,22 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
     // ensure round subdirectory exists
     await fs.mkdir(path.dirname(zkeypath), { recursive: true })
     // copy uploaded contribution response to round subdirectory
-    await fs.copyFile(tmpFile(req.file.filename), zkeypath)
+    await fs.copyFile(filename, zkeypath)
 
     // update contribution with hash, name and indicate completion by setting verifiedAt
-    contribution.verifiedAt = new Date()
-    contribution.hash = verificationResult.hash
-    contribution.name = verificationResult.name
-
-    await contribution.save()
+    await contribution.update({
+      verifiedAt: new Date(),
+      hash: verificationResult.hash,
+      name: verificationResult.name
+    })
+    log(`Contribution ${contribution.id} finished.`)
 
     // prepare transcript of all of the user's contributions and save sha256 hash for attestation
     if (contributionIndex === CIRCUITS_COUNT) {
       contributor.attestation = await ensureTranscriptHash(contributor)
+      console.log(`Ceremony completed by ${contributor.url}: ${contributor.attestation}`)
     }
 
-    log(`Contribution ${contribution.id} finished.`)
     res.json({
       contribution: contribution.dataValues,
       circuit: circuit.dataValues,
@@ -150,7 +162,7 @@ router.post('/response', isAuthenticated, upload.single('response'), async (req,
     console.error('Got error during save', e)
     res.status(503).send(e.toString())
   } finally {
-    await fs.unlink(tmpFile(req.file.filename))
+    await fs.unlink(filename)
   }
 })
 

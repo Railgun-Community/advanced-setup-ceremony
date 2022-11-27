@@ -11,6 +11,7 @@
 </template>
 
 <script>
+const { log } = console
 export default {
   data() {
     return {
@@ -29,7 +30,14 @@ export default {
   },
   methods: {
     async getData() {
-      this.stats = await fetch('/api/stats').then((r) => r.json())
+      await fetch('/api/stats')
+        .then((r) => r.json())
+        .then((data) => {
+          this.stats = data
+        })
+        .catch((e) => {
+          log('error fetching stats')
+        })
     },
     cancelAutoUpdate() {
       clearInterval(this.timer)
