@@ -1,7 +1,7 @@
 <template>
   <div class="ceremony">
     <h1 class="title is-size-1 is-size-2-mobile is-spaced">
-      Hello, <span>@{{ userHandle }}</span>
+      Hello, <span>@{{ userHandle == 'Anonymous' ? 'you' : userHandle }}</span>
       <button v-if="isLoggedIn" @click="logOut" class="button is-icon logout">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
           <path
@@ -55,7 +55,8 @@
         ></b-input>
       </b-field>
       <div class="status-message is-success">
-        And now you can post your attestation to Twitter.
+        You should tweet your transcript hash to confirm that your contribution is authentic. Feel
+        free to delete it later if you like. Please tweet to complete!"
         <div class="buttons is-centered">
           <b-button @click="makeTweet" type="is-primary" tag="a" target="_blank" outlined>
             Post attestation
@@ -73,6 +74,11 @@
         fairly intense cryptographic operation, and may take 60 minutes depending on your processing
         power. We recommend running the contribution overnight, although you may stop and resume
         where you left off at any time.
+      </p>
+      <p class="p">
+        When your contribution is complete, you will see a hash of your transcript and a button to
+        tweet it. Doing so from your primary, well-known account will prove that your contribution
+        is authentic.
       </p>
       <div class="buttons is-centered">
         <div class="buttons">
