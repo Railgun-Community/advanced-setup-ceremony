@@ -128,7 +128,10 @@ export default {
       const matchesSearch = (contributor) =>
         contributor.name.toLowerCase().includes(search) ||
         contributor.handle.toLowerCase().includes(search)
-      const contributors = this.contributors.filter(hasContributions).filter(matchesSearch)
+      const contributors = this.contributors
+        .filter(hasContributions)
+        .filter(matchesSearch)
+        .reverse()
       return contributors
     }
   },
