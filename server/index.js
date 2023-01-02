@@ -18,6 +18,8 @@ const { log } = console
 const isDev = process.env.NODE_ENV !== 'production'
 const PORT = process.env.PORT || 3000
 
+const CEREMONY_CLOSED = process.env.CEREMONY_CLOSED
+
 const circuitsCount = Number(process.env.CIRCUITS_COUNT)
 if (!circuitsCount) {
   throw new Error('Please set env.CIRCUITS_COUNT')
@@ -45,8 +47,10 @@ app.use(
     store: new SequelizeStore({ db: models.sequelize })
   })
 )
-app.use('/api', sessionsController)
-app.use('/api', contributionController)
+if (!CEREMONY_CLOSED) {
+  app.use('/api', sessionsController)
+  app.use('/api', contributionController)
+}
 app.use('/api', dataController)
 
 async function start() {

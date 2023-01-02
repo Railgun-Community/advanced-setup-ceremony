@@ -1,6 +1,25 @@
+const fs = require('fs')
+const process = require('process')
+const path = require('path')
 const router = require('express').Router()
+const archiver = require('archiver')
 const db = require('../models')
 const { isAuthenticated, circuitZKeyPath } = require('../helper')
+
+const { log } = console
+
+router.get('/download/circuits/final.zip', async (req, res) => {
+  const archivePath = path.join(process.cwd(), '/final.zip')
+
+  if (!fs.existsSync(archivePath)) {
+    const output = await archiveArtifacts(archivePath)
+    output.on('close', function() {
+      res.download(archivePath)
+    })
+  } else {
+    res.download(archivePath)
+  }
+})
 
 router.get('/stats', async (req, res) => {
   const contributors = await db.Contributor.scope('participating').findAll()
@@ -23,6 +42,24 @@ router.get('/contributors/:id', async (req, res) => {
 router.get('/contributors', async (req, res) => {
   const contributors = await db.Contributor.scope('participating').findAll()
   res.json(contributors.map((c) => c.dataValues))
+})
+
+router.get('/download/contributors.zip', async (req, res) => {
+  const contributorsPath = path.join(process.cwd(), 'contributors')
+  log(contributorsPath)
+  if (!fs.existsSync(contributorsPath)) {
+    fs.mkdirSync(contributorsPath)
+    const contributors = await db.Contributor.scope('participating').findAll()
+    for (const c of contributors) {
+      const filename = path.join(contributorsPath, `${c.id}-${c.name}.json`)
+      const transcript = await db.contributorTranscript(c.id)
+      fs.writeFileSync(filename, JSON.stringify(transcript))
+    }
+  }
+  const output = await archiveContributors(contributorsPath)
+  output.on('close', () => {
+    res.download(contributorsPath + '.zip')
+  })
 })
 
 router.get('/download/contributors/:id.json', async (req, res) => {
@@ -90,5 +127,29 @@ router.get('/contributions', async (req, res) => {
   const contributions = await db.Contribution.scope('verified').findAll()
   res.json(contributions)
 })
+
+async function archiveContributors(archivePath) {
+  const output = fs.createWriteStream(archivePath + '.zip')
+  const archive = archiver('zip', { zlib: { level: 9 } })
+  archive.directory(archivePath, 'contributors')
+  archive.pipe(output)
+  await archive.finalize()
+  return output
+}
+
+async function archiveArtifacts(archivePath) {
+  const circuits = await db.Circuit.scope('lastContribution').findAll()
+  const output = fs.createWriteStream(archivePath)
+  const archive = archiver('zip', { zlib: { level: 9 } })
+  archive.append(null, { name: 'zkeys/' })
+  for (const c of circuits) {
+    archive.file(circuitZKeyPath(c.name, c.Contributions[0].round), {
+      name: `zkeys/${c.name}.zkey`
+    })
+  }
+  archive.pipe(output)
+  await archive.finalize()
+  return output
+}
 
 module.exports = router

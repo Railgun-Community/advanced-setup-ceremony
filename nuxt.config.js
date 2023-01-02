@@ -5,9 +5,7 @@ module.exports = {
    */
   head: {
     title: 'RAILGUN Advanced Setup Ceremony',
-    script: [
-      { vmid: 'snarkjs', hid: 'snarkjs', src: '/snarkjs.min.js', defer: false }
-    ],
+    script: [{ vmid: 'snarkjs', hid: 'snarkjs', src: '/snarkjs.min.js', defer: false }],
     meta: [
       { charset: 'utf-8' },
       {
@@ -98,10 +96,7 @@ module.exports = {
   /*
    ** Plugins to load before mounting the App
    */
-  plugins: [
-    { src: '~plugins/railgun-contribution.client.js', ssr: false },
-    '~plugins/highlight'
-  ],
+  plugins: [{ src: '~plugins/railgun-contribution.client.js', ssr: false }, '~plugins/highlight'],
   /*
    ** Nuxt.js dev-modules
    */
@@ -166,9 +161,13 @@ module.exports = {
     port: 3000, // default: 3000
     host: '0.0.0.0' // default: localhost
   },
+  publicRuntimeConfig: {
+    ceremonyClosed: process.env.CEREMONY_CLOSED
+  },
   env: {
     hashtag: process.env.TWITTER_HASHTAG,
     downloadUrl: process.env.AWS_CONTRIBUTION_URL,
-    url: process.env.URL
+    url: process.env.URL,
+    ceremonyClosed: process.env.CEREMONY_CLOSED
   }
 }

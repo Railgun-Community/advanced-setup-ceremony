@@ -12,6 +12,9 @@
       </button>
     </h1>
     <Stats></Stats>
+    <div v-show="ceremonyClosed" class="title is-size-2 is-spaced">
+      The Ceremony is closed.
+    </div>
 
     <!-- show if not logged in -->
     <div v-show="!isLoggedIn">
@@ -137,6 +140,7 @@ export default {
   },
   data() {
     return {
+      ceremonyClosed: this.$config.ceremonyClosed,
       stats: {
         active: 0,
         circuits: 0,
@@ -195,6 +199,7 @@ export default {
   },
   async mounted() {
     this.$root.$emit('enableLoading')
+    console.log(this.$config)
     await this.getStats()
     await this.getUserData()
     setTimeout(() => {
